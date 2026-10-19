@@ -1,0 +1,107 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Лес Волшебных Зверей - 3D v5</title><style>
+*{box-sizing:border-box}body{margin:0;background:#101b16;color:#fff;font:14px -apple-system,BlinkMacSystemFont,Arial,sans-serif;overflow:hidden}canvas{display:block}#hud{position:absolute;left:18px;top:16px;background:#10231bcc;padding:14px 17px;border:1px solid #ffffff30;border-radius:12px;max-width:360px;pointer-events:none}#hud h2{font-size:17px;margin:0 0 6px}#status{opacity:.85;font-size:12px}#controls{position:absolute;bottom:16px;left:18px;background:#10231bdc;padding:11px 15px;border-radius:10px;line-height:1.7}#start{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#122b22e8;border:1px solid #a7c0a3;border-radius:18px;padding:25px;text-align:center;max-width:390px;width:90%;box-shadow:0 20px 60px #0008}button{border:0;background:#b4d8a2;color:#14221a;font-weight:700;border-radius:8px;padding:11px 17px;cursor:pointer;margin-top:12px}#cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:21px;color:#fffc;pointer-events:none;display:none}#mapPanel{position:absolute;right:16px;top:16px;width:260px;background:#12251ee8;border:1px solid #ffffff44;border-radius:12px;padding:12px;max-height:88vh;overflow:auto}#mapPanel img{width:100%;border-radius:5px}#mapPanel h3{margin:0 0 8px}#mini{width:230px;height:175px;display:block;background:#37553d;border-radius:5px;margin-bottom:8px}#mapPanel small{color:#d4e4d5}#toggle{position:absolute;right:16px;bottom:16px}body.playing #start{display:none}body.playing #cross{display:block}@media(max-width:700px){#mapPanel{width:165px}#mini{width:140px;height:110px}#controls{font-size:11px;max-width:220px}#hud{max-width:210px}}
+</style></head><body><div id="hud"><h2>Лес Волшебных Зверей</h2><div id="status">Загрузка трёхмерного мира…</div></div><div id="controls">W A S D - движение · Мышь - обзор<br>Shift - бег · Пробел - прыжок · M - карта<br>Esc - освободить курсор · R - к началу</div><div id="cross">+</div><div id="start"><h2>Лес Волшебных Зверей</h2><p>Первая исследуемая 3D-версия мира по иллюстрированной карте.</p><p>Прогуляйтесь по лесу, найдите озёра, холм, деревню и ущелье.</p><button id="play">Начать прогулку</button><p style="font-size:12px;opacity:.8">Для управления необходимы клавиатура и мышь.</p></div><aside id="mapPanel"><h3>Карта местности</h3><canvas id="mini" width="460" height="350"></canvas><small>Белая точка - ваше положение. Нажмите M, чтобы скрыть карту.</small><details><summary>Оригинальная карта</summary><img src="map_reference.png" alt="Оригинальная карта из PDF"></details></aside><button id="toggle">Показать / скрыть карту (M)</button>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xb4d1dc);scene.fog=new THREE.FogExp2(0xb4d1dc,0.0035);
+const camera=new THREE.PerspectiveCamera(73,innerWidth/innerHeight,.1,1000);const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.3;document.body.prepend(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xdff3ff,0x587248,2.0));const sun=new THREE.DirectionalLight(0xffe9bd,2.7);sun.position.set(-90,170,-110);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-190;sun.shadow.camera.right=190;sun.shadow.camera.top=190;sun.shadow.camera.bottom=-190;sun.shadow.normalBias=.025;scene.add(sun);
+let seed=87441;function rand(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}const W=460,H=360;
+function gauss(x,z,cx,cz,sx,sz,h){let a=(x-cx)/sx,b=(z-cz)/sz;return h*Math.exp(-.5*(a*a+b*b))}
+function height(x,z){return 1.7*Math.sin(x*.023)*Math.cos(z*.019)+1.1*Math.sin(x*.057+z*.031)+gauss(x,z,80,-45,62,70,48)+gauss(x,z,180,120,45,95,91)+gauss(x,z,205,45,35,80,53)+gauss(x,z,-100,-135,65,52,24)}
+function lake(x,z){const a=((x+118)/58)**2+((z+62)/32)**2;const b=((x-105)/68)**2+((z+119)/34)**2;return a<1||b<1}
+function riverX(z){return -25+26*Math.sin(z*.016)+14*Math.sin(z*.039)}function isRiver(x,z){return Math.abs(x-riverX(z))<5.5&&z>-175&&z<170}function water(x,z){return lake(x,z)||isRiver(x,z)}
+const terrainGeo=new THREE.PlaneGeometry(W,H,160,126);terrainGeo.rotateX(-Math.PI/2);const pos=terrainGeo.attributes.position;const colors=[];const c1=new THREE.Color(0x476d36),c2=new THREE.Color(0x71894b),c3=new THREE.Color(0x88877a);for(let i=0;i<pos.count;i++){let x=pos.getX(i),z=pos.getZ(i),y=height(x,z);pos.setY(i,y);let c=c1.clone().lerp(c2,Math.min(1,Math.max(0,(y+5)/38)));if(y>35)c.lerp(c3,Math.min(.85,(y-35)/65));colors.push(c.r,c.g,c.b)}terrainGeo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));terrainGeo.computeVertexNormals();const ground=new THREE.Mesh(terrainGeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}));ground.receiveShadow=true;scene.add(ground);
+const mats={trunk:new THREE.MeshStandardMaterial({color:0x60452b,roughness:1}),leaf:new THREE.MeshStandardMaterial({color:0x2f5b2e,roughness:1}),leaf2:new THREE.MeshStandardMaterial({color:0x4b7535,roughness:1}),stone:new THREE.MeshStandardMaterial({color:0x757d78,roughness:1}),water:new THREE.MeshPhysicalMaterial({color:0x2c91a5,metalness:.12,roughness:.2,transparent:true,opacity:.79,side:THREE.DoubleSide}),path:new THREE.MeshStandardMaterial({color:0xa48b61,roughness:1}),wood:new THREE.MeshStandardMaterial({color:0x785637,roughness:1}),roof:new THREE.MeshStandardMaterial({color:0x935c36,roughness:1}),wall:new THREE.MeshStandardMaterial({color:0xb7a17d,roughness:1})};
+function box(x,y,z,w,h,d,mat){let m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m}
+function ball(x,y,z,r,mat,sy=1){let m=new THREE.Mesh(new THREE.IcosahedronGeometry(r,1),mat);m.position.set(x,y,z);m.scale.y=sy;m.castShadow=true;scene.add(m);return m}
+// Lakes and stream are approximated surfaces based on the illustrated map.
+function waterPatch(cx,cz,rx,rz){const shape=new THREE.Shape();for(let i=0;i<=80;i++){let a=i/80*Math.PI*2;let x=cx+Math.cos(a)*rx*(1+.045*Math.sin(a*7)),z=cz+Math.sin(a)*rz*(1+.04*Math.cos(a*5));i?shape.lineTo(x,z):shape.moveTo(x,z)}let g=new THREE.ShapeGeometry(shape,48);g.rotateX(Math.PI/2);let mesh=new THREE.Mesh(g,mats.water);mesh.position.y=2.0;scene.add(mesh)}waterPatch(-118,-62,58,32);waterPatch(105,-119,68,34);
+function strip(points,width,mat,yOffset=.22){const verts=[],idx=[];for(let i=0;i<points.length;i++){let [x,z]=points[i];let a=points[Math.max(0,i-1)],b=points[Math.min(points.length-1,i+1)];let dx=b[0]-a[0],dz=b[1]-a[1],l=Math.hypot(dx,dz)||1,nx=-dz/l,nz=dx/l;for(let s of [-1,1])verts.push(x+nx*width*s/2,height(x,z)+yOffset,z+nz*width*s/2);if(i){let k=i*2;idx.push(k-2,k-1,k,k-1,k+1,k)}}let g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));g.setIndex(idx);g.computeVertexNormals();const m=new THREE.Mesh(g,mat);m.receiveShadow=true;scene.add(m)}
+let stream=[];for(let z=-174;z<=172;z+=3)stream.push([riverX(z),z]);strip(stream,10,mats.water,.42);
+const paths=[ [[-215,125],[-170,102],[-125,80],[-85,55],[-35,30],[5,0],[55,-35],[125,-80],[205,-115]], [[-190,-155],[-165,-100],[-150,-45],[-115,8],[-80,45],[-40,88],[5,125],[60,155],[145,170]], [[-185,145],[-100,135],[-30,140],[40,115],[115,85],[190,55]], [[-85,55],[-40,10],[0,-55],[25,-115],[75,-150]] ];for(const p of paths){let dense=[];for(let i=0;i<p.length-1;i++){for(let j=0;j<14;j++){let t=j/14;dense.push([THREE.MathUtils.lerp(p[i][0],p[i+1][0],t),THREE.MathUtils.lerp(p[i][1],p[i+1][1],t)])}}dense.push(p.at(-1));strip(dense,3.8,mats.path,.36)}
+const locations=[['Вход в Волшебный лес',-193,134],['Большой холм и кроличья нора',-88,0],['Домик Ёжика',-155,35],['Кротовья нора',-68,82],['Дерево Белки',-90,112],['Цветочная поляна',-45,-45],['Голубое озеро',-118,-62],['Домик Бобра и дамба',15,52],['Длинное озеро',105,-119],['Деревенька',168,-143],['Фруктовый лес',115,35],['Ущелье «Тонкая ниточка»',162,90],['Хижина Лисы',175,10],['Домик Волка',193,65],['Пещера Гномов',192,132]];
+function nearSite(x,z){return locations.some(l=>Math.hypot(x-l[1],z-l[2])<14)}
+const trunkGeo=new THREE.CylinderGeometry(.28,.5,5,6),crownGeo=new THREE.IcosahedronGeometry(1,1);const count=1550;const trunks=new THREE.InstancedMesh(trunkGeo,mats.trunk,count),crowns=new THREE.InstancedMesh(crownGeo,mats.leaf,count);const d=new THREE.Object3D();let n=0;for(let i=0;i<5000&&n<count;i++){let x=(rand()-.5)*W,z=(rand()-.5)*H;if(water(x,z)||nearSite(x,z)||Math.abs(x-riverX(z))<11||paths.some(p=>p.some(q=>Math.hypot(x-q[0],z-q[1])<5)))continue;let h=height(x,z);if(h>67)continue;let s=2.1+rand()*2.7;d.position.set(x,h+s*1.1,z);d.scale.set(s*.46,s*.55,s*.46);d.rotation.set(0,rand()*6.28,0);d.updateMatrix();trunks.setMatrixAt(n,d.matrix);d.position.set(x,h+s*2.45,z);d.scale.set(s*1.45,s*2.1,s*1.45);d.updateMatrix();crowns.setMatrixAt(n,d.matrix);n++}trunks.count=crowns.count=n;trunks.castShadow=true;crowns.castShadow=true;scene.add(trunks,crowns);
+function house(x,z,w=8,d=7){let y=height(x,z);box(x,y+3,z,w,6,d,mats.wall);const roof=new THREE.Mesh(new THREE.ConeGeometry(Math.max(w,d)*.79,4,4),mats.roof);roof.position.set(x,y+8,z);roof.rotation.y=Math.PI/4;roof.castShadow=true;scene.add(roof);box(x,y+1.6,z+d/2+.06,1.9,3.2,.2,mats.wood)}
+for(let i=0;i<11;i++){let x=147+(i%4)*11+(rand()*3),z=-161+Math.floor(i/4)*11;house(x,z,6,6)}house(175,10);house(193,65);house(15,52,10,8);
+// The great stump, squirrel tree, bridge and gorge serve as navigational landmarks.
+let stump=ball(-88,height(-88,0)+3,0,5,mats.wood,.65);box(-88,height(-88,0)+1.2,4.8,2.5,2.4,.4,mats.roof);
+let giant=box(-90,height(-90,112)+13,112,6,26,6,mats.trunk);ball(-90,height(-90,112)+29,112,12,mats.leaf2,1.4);box(-90,height(-90,112)+16,115.1,2.4,3.5,.4,mats.wood);
+function bridge(x,z){let y=height(x,z)+2;box(x,y,z,20,1,5,mats.wood);for(let s of [-1,1])for(let k=-2;k<=2;k++)box(x+k*4,y+1.3,z+s*2.3,.35,2.6,.35,mats.wood)}bridge(riverX(50),50);bridge(riverX(-110),-110);
+for(let i=0;i<70;i++){let x=143+rand()*75,z=80+rand()*65;ball(x,height(x,z)+2,z,1.5+rand()*3,mats.stone,1.8)}
+for(let i=0;i<500;i++){let x=(rand()-.5)*W,z=(rand()-.5)*H;if(water(x,z)||height(x,z)>55)continue;let r=.15+rand()*.3;ball(x,height(x,z)+r,z,r,rand()<.7?mats.leaf2:mats.leaf,1.8)}
+const player={x:-193,z:134,y:0,vy:0,yaw:0,pitch:0,grounded:true};let keys={},last=null,locked=false;let moveCount=0,resetCount=0;function reset(){resetCount++;player.x=-193;player.z=134;player.vy=0;player.yaw=2.1;player.pitch=0;player.y=height(player.x,player.z)+1.75;player.grounded=true}reset();renderer.domElement.tabIndex=0;
+function beginPlay(){document.body.classList.add('playing');renderer.domElement.focus();try{const promise=renderer.domElement.requestPointerLock?.();if(promise?.catch)promise.catch(()=>{});}catch(e){}}
+document.getElementById('play').addEventListener('click',beginPlay);
+renderer.domElement.addEventListener('click',beginPlay);
+document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===renderer.domElement;});document.addEventListener('mousemove',e=>{if(!locked)return;player.yaw-=e.movementX*.0023;player.pitch=Math.max(-1.45,Math.min(1.45,player.pitch-e.movementY*.0023))});// Capture keyboard at window level, independently of canvas focus or pointer lock.
+const movementCodes=new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight','Space']);
+let lastInput='нет';
+// Movement independent of animation-frame timing, with an immediate step on input.
+function moveBy(forward,side,amount){
+  const dx=(-Math.sin(player.yaw)*forward+Math.cos(player.yaw)*side)*amount;
+  const dz=(-Math.cos(player.yaw)*forward-Math.sin(player.yaw)*side)*amount;
+  player.x=THREE.MathUtils.clamp(player.x+dx,-W/2+4,W/2-4);
+  player.z=THREE.MathUtils.clamp(player.z+dz,-H/2+4,H/2-4);moveCount++;
+}
+function moveForCode(code,amount){
+  if(code==='KeyW'||code==='ArrowUp')moveBy(1,0,amount);
+  if(code==='KeyS'||code==='ArrowDown')moveBy(-1,0,amount);
+  if(code==='KeyA'||code==='ArrowLeft')moveBy(0,-1,amount);
+  if(code==='KeyD'||code==='ArrowRight')moveBy(0,1,amount);
+}
+function normalizedCode(e){
+  const k=(e.key||'').toLowerCase();
+  const aliases={w:'KeyW',a:'KeyA',s:'KeyS',d:'KeyD',ц:'KeyW',ф:'KeyA',ы:'KeyS',в:'KeyD',
+    arrowup:'ArrowUp',arrowdown:'ArrowDown',arrowleft:'ArrowLeft',arrowright:'ArrowRight',
+    ' ':'Space',spacebar:'Space',shift:'ShiftLeft'};
+  return aliases[k]||e.code||'';
+}
+function onKey(e,down){
+  const code=normalizedCode(e);
+  if(!code)return;
+  if(movementCodes.has(code))e.preventDefault();
+  keys[code]=down;
+  if(down && movementCodes.has(code) && code!=='Space' && !code.startsWith('Shift'))moveForCode(code,0.65);
+  lastInput=(down?'нажата ':'отпущена ')+code;
+  if(down&&!e.repeat&&code==='KeyM')toggleMap();
+  if(down&&!e.repeat&&code==='KeyR')reset();
+}
+window.addEventListener('keydown',e=>onKey(e,true),true);
+window.addEventListener('keyup',e=>onKey(e,false),true);
+window.addEventListener('blur',()=>{keys={};});
+// Touch/click movement buttons also allow testing without relying on Safari keyboard events.
+function addMovementPad(){
+ const pad=document.createElement('div');pad.id='movementPad';
+ pad.style.cssText='position:fixed;left:16px;bottom:112px;z-index:100;display:grid;grid-template-columns:repeat(3,44px);gap:5px;opacity:.85';
+ for(const [label,code,col,row] of [['▲','KeyW',2,1],['◀','KeyA',1,2],['▼','KeyS',2,2],['▶','KeyD',3,2]]){
+  const btn=document.createElement('button');btn.textContent=label;btn.title=code;
+  btn.style.cssText=`grid-column:${col};grid-row:${row};height:44px;border-radius:8px;border:1px solid #aaa;background:#c7ddb1;color:#142b20;font-size:20px;touch-action:none`;
+  const set=(v)=>{keys[code]=v;lastInput=(v?'кнопка ':'отпущена ')+code;};
+  btn.addEventListener('pointerdown',e=>{e.preventDefault();set(true);moveForCode(code,1.5)});
+  for(const ev of ['pointerup','pointercancel','pointerleave'])btn.addEventListener(ev,()=>set(false));
+  pad.appendChild(btn);
+ }
+ document.body.appendChild(pad);
+}
+addMovementPad();
+function toggleMap(){let el=document.getElementById('mapPanel');el.style.display=el.style.display==='none'?'block':'none'}document.getElementById('toggle').onclick=toggleMap;
+const mini=document.getElementById('mini'),ctx=mini.getContext('2d');function px(x){return (x+W/2)/W*mini.width}function py(z){return (z+H/2)/H*mini.height}function drawMap(){ctx.fillStyle='#476d3e';ctx.fillRect(0,0,mini.width,mini.height);ctx.strokeStyle='#4ca4c0';ctx.lineWidth=13;for(let [x,z,rx,rz] of [[-118,-62,58,32],[105,-119,68,34]]){ctx.beginPath();ctx.ellipse(px(x),py(z),rx/W*mini.width,rz/H*mini.height,0,0,7);ctx.fillStyle='#4ca4c0';ctx.fill()}ctx.beginPath();stream.forEach(([x,z],i)=>i?ctx.lineTo(px(x),py(z)):ctx.moveTo(px(x),py(z)));ctx.stroke();ctx.strokeStyle='#d1b580';ctx.lineWidth=3;paths.forEach(p=>{ctx.beginPath();p.forEach(([x,z],i)=>i?ctx.lineTo(px(x),py(z)):ctx.moveTo(px(x),py(z)));ctx.stroke()});ctx.font='18px sans-serif';locations.forEach((l,i)=>{ctx.fillStyle='#ffe1a0';ctx.beginPath();ctx.arc(px(l[1]),py(l[2]),4,0,7);ctx.fill()});ctx.fillStyle='white';ctx.beginPath();ctx.arc(px(player.x),py(player.z),7,0,7);ctx.fill();ctx.strokeStyle='#ffffff';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(px(player.x),py(player.z));ctx.lineTo(px(player.x)-Math.sin(player.yaw)*16,py(player.z)-Math.cos(player.yaw)*16);ctx.stroke()}
+function animate(now){requestAnimationFrame(animate);
+// requestAnimationFrame must supply a finite timestamp. Never allow NaN into player coordinates.
+if(!Number.isFinite(now)) now=performance.now();
+let dt=last===null?1/60:Math.max(1/120,Math.min(.05,(now-last)/1000));
+if(!Number.isFinite(dt)||dt<=0) dt=1/60;
+last=now;
+if(!Number.isFinite(player.x)||!Number.isFinite(player.z)||!Number.isFinite(player.y)||!Number.isFinite(player.vy)){
+ reset();player.y=height(player.x,player.z)+1.75;
+}
+{
+ const f=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0);
+ const r=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0);
+ if(f||r){const scale=(keys.ShiftLeft||keys.ShiftRight?20:10)*dt/Math.hypot(f,r);moveBy(f,r,scale);}
+ if(keys.Space&&player.grounded){player.vy=8;player.grounded=false;}
+}
+let floor=Math.max(height(player.x,player.z),water(player.x,player.z)?2.5:-999)+1.75;player.y+=player.vy*dt;player.vy-=22*dt;if(player.y<=floor){player.y=floor;player.vy=0;player.grounded=true}camera.position.set(player.x,player.y,player.z);camera.rotation.order='YXZ';camera.rotation.y=player.yaw;camera.rotation.x=player.pitch;let nearest=locations.reduce((a,b)=>Math.hypot(player.x-b[1],player.z-b[2])<Math.hypot(player.x-a[1],player.z-a[2])?b:a);document.getElementById('status').textContent=`Рядом: ${nearest[0]} · ${Math.round(Math.hypot(player.x-nearest[1],player.z-nearest[2]))} м · X:${player.x.toFixed(1)} Z:${player.z.toFixed(1)} · Клавиши: ${(Object.keys(keys).filter(k=>keys[k]).join(',')||'нет')+' · Последняя: '+lastInput+' · dt:'+dt.toFixed(3)+' · шаги:'+moveCount+' · сбросы:'+resetCount}`;drawMap();renderer.render(scene,camera)}requestAnimationFrame(animate);window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+</script></body></html>
